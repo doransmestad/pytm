@@ -10,6 +10,8 @@ import uuid
 import html
 import copy
 
+from jinja2 import Environment, FileSystemLoader
+
 from collections import Counter, defaultdict
 from collections.abc import Iterable
 from enum import Enum
@@ -56,9 +58,10 @@ logger = logging.getLogger(__name__)
 class var(object):
     """A descriptor that allows setting a value only once"""
 
-    def __init__(self, default, required=False, doc="", onSet=None):
+    def __init__(self, default, required=False, name="", doc="", onSet=None):
         self.default = default
         self.required = required
+        self.name = name  # human-friendly name for this value
         self.doc = doc
         self.data = WeakKeyDictionary()
         self.onSet = onSet
@@ -787,6 +790,7 @@ class TM:
     )
     name = varString("", required=True, doc="Model name")
     description = varString("", required=True, doc="Model description")
+    report_metadata = {}
     threatsFile = varString(
         os.path.dirname(__file__) + "/threatlib/threats.json",
         onSet=lambda i, v: i._init_threats(),
@@ -980,6 +984,7 @@ a brief description of the system being modeled."""
 
     def _dfd_template(self):
         return """digraph tm {{
+    concentrate=true
     graph [
         fontname = Arial;
         fontsize = 14;
@@ -997,7 +1002,7 @@ a brief description of the system being modeled."""
     ]
     labelloc = "t";
     fontsize = 20;
-    nodesep = 1;
+    nodesep = 1.5;
 
 {edges}
 }}"""
@@ -1111,7 +1116,38 @@ a brief description of the system being modeled."""
             "data": TM._data,
         }
 
-        return self._sf.format(template, **data)
+        # Create an environment and load the template
+        env = Environment(loader=FileSystemLoader('.'))
+        template = env.get_template(template_path)
+
+        def severity_sort(obj_list):
+            """
+            Custom function to sort findings or other objects by
+            their severity rating.
+            """
+            ranking = {
+                "Very High": 10,
+                "High": 20,
+                "Medium": 30,
+                "Low": 40,
+                "Very Low": 50,
+            }
+            return sorted(obj_list, key=lambda obj: ranking[obj.severity])
+
+        return template.render({
+            "tm": self,
+            # bring in some python functions to make templating easier
+            "len": len,
+            "hasattr": hasattr,
+            "getattr": getattr,
+            "type": type,
+            "str": str,
+            # any some custom functions
+            "severity_sort": severity_sort,
+            "list_comp_attr": lambda x, element: [getattr(e, element) for e in x],
+        })
+
+        #return self._sf.format(template, **data)
 
     def process(self):
         try:
@@ -1284,33 +1320,96 @@ class Controls:
 
     authenticatesDestination = varBool(
         False,
-        doc="""Verifies the identity of the destination,
-for example by verifying the authenticity of a digital certificate.""",
+        name="Authenticates Destination Identity",
+        doc="Verifies the identity of the destination, " +
+            "for example by verifying the authenticity of a digital certificate.",
     )
-    authenticatesSource = varBool(False)
+    authenticatesSource = varBool(
+        False,
+        name="Authenticates Source Identity",
+        doc="Verified the identify of the source, " +
+            "for example by verifying the authenticity of a digital certificate.",
+    )
     authenticationScheme = varString("")
-    authorizesSource = varBool(False)
+    authorizesSource = varBool(
+        False,
+        name="Authorizes Source",
+        doc="Authorizes the source identity for access to the target resources.",
+    )
     checksDestinationRevocation = varBool(
         False,
-        doc="""Correctly checks the revocation status
-of credentials used to authenticate the destination""",
+        name="Checks for Destination Credential Revocation",
+        doc="Correctly checks the revocation status " +
+            "of credentials used to authenticate the destination.",
     )
-    checksInputBounds = varBool(False)
-    definesConnectionTimeout = varBool(False)
-    disablesDTD = varBool(False)
-    disablesiFrames = varBool(False)
-    encodesHeaders = varBool(False)
-    encodesOutput = varBool(False)
-    encryptsCookies = varBool(False)
-    encryptsSessionData = varBool(False)
-    handlesCrashes = varBool(False)
-    handlesInterruptions = varBool(False)
-    handlesResourceConsumption = varBool(False)
-    hasAccessControl = varBool(False)
-    implementsAuthenticationScheme = varBool(False)
-    implementsCSRFToken = varBool(False)
+    checksInputBounds = varBool(
+        False,
+        name="Check Input Boundaries",
+        doc="Checks that input data is within the expected bounds.",
+    )
+    definesConnectionTimeout = varBool(
+        False,
+        name="Defines Connection Timeouts",
+        doc="Sets and enforces connections timeouts, " + 
+            "for example 60 seconds for an HTTP request."
+    )
+    disablesDTD = varBool(
+        False,
+        name="Disables Document Type Definition (DTDs)",
+        doc="Disallows the use of Document Type Definitions when parsing XML."
+    )
+    disablesiFrames = varBool(
+        False,
+        name="Disables iFrames",
+        doc="Disables the use of iframes for web applications, for example by " +
+            "using the X-Frame-Options header."
+    )
+    encodesHeaders = varBool(
+        False,
+        name="encodesHeaders",
+    )
+    encodesOutput = varBool(
+        False,
+        name="Encodes Outputs",
+        doc="Output is sanitized to remove invalid characters, for example by " +
+            "HTML escaping text prior to transmission."
+    )
+    encryptsCookies = varBool(
+        False,
+        name="encryptsCookies",
+    )
+    encryptsSessionData = varBool(
+        False,
+        name="encryptsSessionData",
+    )
+    handlesCrashes = varBool(
+        False,
+        name="handlesCrashes",
+    )
+    handlesInterruptions = varBool(
+        False,
+        name="handlesInterruptions",
+    )
+    handlesResourceConsumption = varBool(
+        False,
+        name="Handles Resource Consumption Gracefully",
+    )
+    hasAccessControl = varBool(
+        False,
+        name="Has Access Controls",
+        doc="System implement access controls for requests and actions."
+    )
+    implementsAuthenticationScheme = varBool(
+        False,
+        name="Implements An Authentication Scheme",
+    )
+    implementsCSRFToken = varBool(
+        False,
+        name="Implements CSRF Tokens",
+    )
     implementsNonce = varBool(
         False,
+        name="Implements Nonces",
         doc="""Nonce is an arbitrary number
 that can be used just once in a cryptographic communication.
 It is often a random or pseudo-random number issued in an authentication protocol
@@ -1320,6 +1419,7 @@ hash functions.""",
     )
     implementsPOLP = varBool(
         False,
+        name="Implements Principle of Least Privilege (PoLP)",
         doc="""The principle of least privilege (PoLP),
 also known as the principle of minimal privilege or the principle of least authority,
 requires that in a particular abstraction layer of a computing environment,
@@ -1327,35 +1427,105 @@ every module (such as a process, a user, or a program, depending on the subject)
 must be able to access only the information and resources
 that are necessary for its legitimate purpose.""",
     )
-    implementsServerSideValidation = varBool(False)
-    implementsStrictHTTPValidation = varBool(False)
-    invokesScriptFilters = varBool(False)
-    isEncrypted = varBool(False, doc="Requires incoming data flow to be encrypted")
-    isEncryptedAtRest = varBool(False, doc="Stored data is encrypted at rest")
-    isHardened = varBool(False)
-    isResilient = varBool(False)
-    providesConfidentiality = varBool(False)
-    providesIntegrity = varBool(False)
-    sanitizesInput = varBool(False)
-    tracksExecutionFlow = varBool(False)
-    usesCodeSigning = varBool(False)
-    usesEncryptionAlgorithm = varString("")
+    implementsServerSideValidation = varBool(
+        False,
+        name="implementsServerSideValidation",
+    )
+    implementsStrictHTTPValidation = varBool(
+        False,
+        name="Implements Strict HTTP Validation",
+        doc="Implements strict validation of HTTP requests for example " +
+            "by following RFC 7230."
+    )
+    invokesScriptFilters = varBool(
+        False,
+        name="invokesScriptFilters",
+    )
+    isEncrypted = varBool(
+        False,
+        name="Data Encrypted in Transit",
+        doc="Requires incoming data flow to be encrypted"
+    )
+    isEncryptedAtRest = varBool(
+        False,
+        name="Data Encrypted At Rest",
+        doc="Stored data is encrypted at rest"
+    )
+    isHardened = varBool(
+        False,
+        name="isHardened",
+    )
+    isResilient = varBool(
+        False,
+        name="Is Resilient (Recovery from Resource Exhaustion)",
+        doc="Is resilient against resource exhaustion by recovering " +
+            "resources after use or attack."
+    )
+    providesConfidentiality = varBool(
+        False,
+        name="providesConfidentiality",
+    )
+    providesIntegrity = varBool(
+        False,
+        name="Provides Integrity (Data, Systems, Code, etc.)",
+    )
+    sanitizesInput = varBool(
+        False,
+        name="Sanitizes Input",
+    )
+    tracksExecutionFlow = varBool(
+        False,
+        name="tracksExecutionFlow",
+    )
+    usesCodeSigning = varBool(
+        False,
+        name="usesCodeSigning",
+    )
+    usesEncryptionAlgorithm = varString(
+        "",
+        name="usesEncryptionAlgorithm",
+    )
     usesMFA = varBool(
         False,
+        name="usesMFA",
         doc="""Multi-factor authentication is an authentication method
 in which a computer user is granted access only after successfully presenting two
 or more pieces of evidence (or factors) to an authentication mechanism: knowledge
 (something the user and only the user knows), possession (something the user
 and only the user has), and inherence (something the user and only the user is).""",
     )
-    usesParameterizedInput = varBool(False)
-    usesSecureFunctions = varBool(False)
-    usesStrongSessionIdentifiers = varBool(False)
-    usesVPN = varBool(False)
-    validatesContentType = varBool(False)
-    validatesHeaders = varBool(False)
-    validatesInput = varBool(False)
-    verifySessionIdentifiers = varBool(False)
+    usesParameterizedInput = varBool(
+        False,
+        name="usesParameterizedInput",
+    )
+    usesSecureFunctions = varBool(
+        False,
+        name="usesSecureFunctions",
+    )
+    usesStrongSessionIdentifiers = varBool(
+        False,
+        name="Uses Strong Session/Auth Identifiers",
+    )
+    usesVPN = varBool(
+        False,
+        name="usesVPN",
+    )
+    validatesContentType = varBool(
+        False,
+        name="validatesContentType",
+    )
+    validatesHeaders = varBool(
+        False,
+        name="validatesHeaders",
+    )
+    validatesInput = varBool(
+        False,
+        name="Validates Input",
+    )
+    verifySessionIdentifiers = varBool(
+        False,
+        name="verifySessionIdentifiers",
+    )
 
     def _attr_values(self):
         klass = self.__class__
@@ -1376,7 +1546,6 @@ and only the user has), and inherence (something the user and only the user is).
             setattr(self, attr, value)
         except ValueError:
             pass
-
 
 class Assumption:
     """
@@ -1880,6 +2049,8 @@ class Dataflow(Element):
     usesSessionTokens = varBool(False)
     severity = 0
 
+    _dfd_template_additions = [] 
+
     def __init__(self, source, sink, name, **kwargs):
         self.source = source
         self.sink = sink
@@ -1892,13 +2063,16 @@ class Dataflow(Element):
         return "({}) {}".format(self.order, self.name)
 
     def _dfd_template(self):
-        return """{source} -> {sink} [
+        start = """{source} -> {sink} [
     color = {color};
     fontcolor = {color};
     dir = {direction};
     label = "{label}";
+    """
+        end = """
 ]
 """
+        return start + ";\n".join(self._dfd_template_additions) + end
 
     def dfd(self, mergeResponses=False, **kwargs):
         self._is_drawn = True
@@ -1931,12 +2105,16 @@ class Dataflow(Element):
         )
 
     def hasDataLeaks(self):
-        return any(
-            d.classification > self.source.maxClassification
-            or d.classification > self.sink.maxClassification
-            or d.classification > self.maxClassification
+        tmp = [ 
+            (d.classification > self.source.maxClassification,
+             d.classification > self.sink.maxClassification,
+             d.classification > self.maxClassification)
             for d in self.data
-        )
+        ]
+        result = any(any(x) for x in tmp)
+        if result is True:
+            print("dataleak:", self.source, self.sink, tmp, file=sys.stderr)
+        return result
 
 
 class Boundary(Element):

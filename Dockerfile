@@ -3,7 +3,6 @@ FROM python:3.12-rc-alpine
 
 
 WORKDIR /usr/src/app
-ENTRYPOINT ["sh"]
 
 ENV PLANTUML_VER 1.2021.7
 ENV PLANTUML_PATH /usr/local/lib/plantuml.jar
@@ -23,6 +22,8 @@ RUN printf '@startuml\n@enduml' | java -Djava.awt.headless=true -jar $PLANTUML_P
 COPY requirements.txt requirements-dev.txt ./
 RUN pip install --no-cache-dir -r requirements-dev.txt \
     && apk del .build-deps
+
+RUN apk add texlive-full
 
 COPY pytm ./pytm
 COPY docs ./docs
